@@ -1,0 +1,14 @@
+{
+  "name": "@reconlion/parseltongue-capsule-cli",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Human-operable CLI for secure capsules. Phase B - not implemented.",
+  "license": "AGPL-3.0-only",
+  "type": "commonjs",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {},
+  "comment:status": "Phase B. This is the path that works over SSH on the Pi and the path a recipient can run without any MCP client."
+}

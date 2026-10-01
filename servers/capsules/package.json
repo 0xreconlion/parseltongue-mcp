@@ -1,0 +1,15 @@
+{
+  "name": "@reconlion/mcp-parseltongue-capsules",
+  "version": "0.0.0",
+  "private": true,
+  "description": "MCP server for local secure message capsules. Phase B - not implemented, not registered.",
+  "license": "AGPL-3.0-only",
+  "type": "commonjs",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {},
+  "comment:status": "Phase B. Do not register in ~/.claude.json until a /whitehat pass has run and the key-leak test passes. Version stays 0.0.0 and private:true until then.",
+  "comment:license": "AGPL-3.0-only as shipped: this server links the AGPL bridge for capsule inspection. @reconlion/capsule-core itself stays Apache-2.0 and standalone - the crypto is reusable, this server binary is not."
+}

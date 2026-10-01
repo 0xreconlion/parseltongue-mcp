@@ -1,0 +1,13 @@
+{
+  "name": "@reconlion/capsule-core",
+  "version": "0.1.0",
+  "description": "Local secure message capsules: identity, contact cards, seal/open, tamper-evident inspection. Standalone; no Parseltongue dependency.",
+  "license": "Apache-2.0",
+  "type": "commonjs",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {},
+  "comment:license": "Apache-2.0 deliberately, and deliberately isolated. This package must never import from @reconlion/parseltongue-bridge or any P4RS3LT0NGV3 source, or it becomes an AGPL derivative and loses its standalone reusability. Enforced by scripts/check-license-seam.js, not by convention."
+}

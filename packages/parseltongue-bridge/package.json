@@ -1,0 +1,13 @@
+{
+  "name": "@reconlion/parseltongue-bridge",
+  "version": "0.1.0",
+  "description": "Node bridge over the P4RS3LT0NGV3 transform catalog. The only package in this repo that touches upstream Parseltongue source.",
+  "license": "AGPL-3.0-only",
+  "type": "commonjs",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {},
+  "comment:license": "AGPL-3.0-only because this is a derivative of elder-plinius/P4RS3LT0NGV3, whose LICENSE is AGPL-3.0. Upstream's package.json says MIT; that conflict is unresolved, so the restrictive reading governs. See ../../docs/LICENSING.md."
+}

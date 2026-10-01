@@ -1,0 +1,20 @@
+{
+  "name": "@reconlion/mcp-parseltongue-transforms",
+  "version": "0.1.0",
+  "description": "MCP server exposing the Parseltongue transform catalog. Representation only - no cryptography, no confidentiality.",
+  "license": "AGPL-3.0-only",
+  "type": "commonjs",
+  "main": "src/index.js",
+  "bin": {
+    "mcp-parseltongue-transforms": "src/index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "^2.0.0",
+    "@reconlion/parseltongue-bridge": "0.1.0",
+    "zod": "^4.2.0"
+  },
+  "comment:license": "AGPL-3.0-only: links @reconlion/parseltongue-bridge, which is a P4RS3LT0NGV3 derivative. If this server is ever exposed over a network, AGPL section 13 requires offering corresponding source to remote users."
+}

@@ -1,0 +1,20 @@
+node_modules/
+*.log
+.DS_Store
+
+# The upstream Parseltongue checkout is never vendored into this repo. The bridge reads it from
+# a configured path (PARSELTONGUE_ROOT). See packages/parseltongue-bridge/README.md.
+vendor/
+upstream/
+
+# Local identity vaults must never be committed. Capsule private keys live outside the repo
+# entirely (~/.local/share/parseltongue-mcp/), but belt and braces.
+*.vault
+*.vault.json
+identities/
+*.secret
+*.key
+*.pem
+
+# Generated wizard output
+wizard/out/

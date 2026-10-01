@@ -1,0 +1,13 @@
+diff --git a/README.md b/README.md
+index dca6541..6565be9 100644
+--- a/README.md
++++ b/README.md
+@@ -6,6 +6,8 @@ A powerful web-based text transformation and steganography tool with **222** bui
+ 
+ The app is a **static site**: run **`npm run build`** (after `npm install`), then open **`dist/index.html`** in your browser—no local server required. **Alternatively**, you can run it as a local app over HTTP with **`npm start`** or **`npx serve dist -l 8080`** (see [Getting Started](#getting-started) below). Core transforms, decoder, and steganography work **without** calling the cloud; features that use [OpenRouter](https://openrouter.ai/) need **network access** and an API key (see below).
+ 
++New to the project? Read the audience-facing [P4RS3LT0NGV3 guide](docs/P4RS3LT0NGV3-GUIDE.md) for what it means, what each tool is for, and how to get started.
++
+ ## ✨ Features
+ 
+ ### 🔐 **Steganography**

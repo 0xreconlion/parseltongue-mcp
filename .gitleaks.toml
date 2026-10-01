@@ -1,0 +1,31 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = """
+Cryptographic primitive and algorithm NAMES are flagged by gitleaks' generic-api-key rule purely \
+on entropy -- 'XChaCha20-Poly1305' scores 3.73 and looks like a key to the heuristic. This is a \
+cryptography repo, so these names appear throughout the docs, tool descriptions and code comments \
+and will keep tripping the gate forever otherwise.
+
+Deliberately NOT scoped with `paths`: gitleaks defaults a paths+regexes allowlist to OR, so naming \
+a file there exempts the ENTIRE FILE and a real credential added beside one of these names would \
+sail through. (That exact mistake was found and fixed in reconlion-operator's config on 2026-09-10 \
+after a planted live-format token passed the gate silently.) These regexes match only the literal \
+algorithm names, so any actual secret -- in any file, including these -- still trips the gate.
+
+regexTarget = "line" is required because allowlist regexes match the captured secret rather than \
+the source line by default.
+
+Verified 2026-10-01 by planting a live-format GitHub token in a file containing these names and \
+confirming the gate still blocked.
+"""
+regexTarget = "line"
+regexes = [
+  '''XChaCha20-Poly1305''',
+  '''ChaCha20-Poly1305''',
+  '''HKDF-SHA256''',
+  '''HKDF-SHA-256''',
+  '''Ed25519''',
+  '''X25519''',
+]

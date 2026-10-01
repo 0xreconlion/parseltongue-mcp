@@ -1,0 +1,23 @@
+{
+  "name": "parseltongue-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MCP servers for the Parseltongue transform catalog and local secure message capsules.",
+  "license": "AGPL-3.0-only",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "packages/*",
+    "servers/*",
+    "cli"
+  ],
+  "scripts": {
+    "check:seam": "node scripts/check-license-seam.js",
+    "check:licenses": "node scripts/check-license-consistency.js",
+    "probe:fidelity": "node scripts/probe-fidelity.js",
+    "test": "npm run check:seam && npm run check:licenses && node --test \"test/**/*.test.js\"",
+    "precommit": "npm test"
+  }
+}
