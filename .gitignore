@@ -7,8 +7,21 @@ node_modules/
 vendor/
 upstream/
 
-# Local identity vaults must never be committed. Capsule private keys live outside the repo
-# entirely (~/.local/share/parseltongue-mcp/), but belt and braces.
+# ---------------------------------------------------------------------------
+# Key material. These are the EXACT filenames the tool writes, not guesses.
+#
+# Keys normally live under ~/.local/share/parseltongue and never come near this repo - but
+# PARSELTONGUE_HOME can point anywhere, a backup gets written to whatever --out says, and a
+# capsule lands wherever the user is standing. The first draft of this file ignored *.vault and
+# *.key and missed identity.json, contacts.json and backup files entirely: every real filename
+# the tool actually produces.
+#
+# Names alone are not enough, since a user can call a backup anything. scripts/check-no-secrets.js
+# is the real guard - it looks for the artifact formats themselves.
+# ---------------------------------------------------------------------------
+identity.json
+contacts.json
+capsules/
 *.vault
 *.vault.json
 identities/
@@ -16,5 +29,15 @@ identities/
 *.key
 *.pem
 
+# Backups and capsules under any plausible name
+*backup*.txt
+*backup*.json
+*-backup
+capsule*.txt
+*.capsule
+
 # Generated wizard output
 wizard/out/
+
+# Local test homes
+.parseltongue-test*/

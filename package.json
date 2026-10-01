@@ -16,8 +16,10 @@
   "scripts": {
     "check:seam": "node scripts/check-license-seam.js",
     "check:licenses": "node scripts/check-license-consistency.js",
+    "check:secrets": "node scripts/check-no-secrets.js",
+    "check:all": "npm run check:seam && npm run check:licenses && npm run check:secrets",
     "probe:fidelity": "node scripts/probe-fidelity.js",
-    "test": "npm run check:seam && npm run check:licenses && node --test \"test/**/*.test.js\"",
+    "test": "npm run check:all && node --test \"test/**/*.test.js\"",
     "precommit": "npm test"
   }
 }

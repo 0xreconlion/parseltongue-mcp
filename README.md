@@ -7,7 +7,7 @@ Two MCP servers, one repo.
    No cryptography in it.
 2. **`parseltongue-capsules`** — local secure message capsules: create an identity, exchange
    public contact cards, seal a message to a recipient, send it through any channel you already
-   use, open and verify it locally. *(Phase B — not implemented, not registered.)*
+   use, open and verify it locally.
 
 Everything is local. There is no relay, no account system, no hosted decrypt, and no outbound
 network capability in either server.
@@ -32,14 +32,39 @@ concealment wrapper explicitly and states that it adds no confidentiality.
 
 | Component | State |
 |---|---|
-| `packages/parseltongue-bridge` | Phase A — in progress |
-| `servers/transforms` | Phase A — in progress |
-| `packages/capsule-core` | Phase B — surface declared, not implemented |
-| `servers/capsules` | Phase B — not implemented, do not register |
-| `cli/`, `wizard/` | Phase B — not implemented |
+| `packages/parseltongue-bridge` | live — 222 transforms, fidelity measured |
+| `servers/transforms` | live — 5 tools |
+| `packages/capsule-core` | live — X25519 / Ed25519 / XChaCha20-Poly1305 / Argon2id |
+| `servers/capsules` | live — 7 tools, none of which can hold a secret |
+| `cli/parseltongue-capsule` | live — all passphrase and plaintext handling |
+| `wizard/wizard.html` | live — offline inspector, no network |
 
-The capsule server does not get registered until a security review has run and the key-leak test
-passes. The transform server has no crypto in it and carries no such gate.
+104 tests. Security review notes, including what was found and fixed, are in
+[`docs/SECURITY.md`](docs/SECURITY.md). It is a self-review, not an external audit.
+
+## The CLI is a security boundary
+
+There is no `seal_capsule` or `open_capsule` MCP tool, deliberately. A passphrase passed as a tool
+argument travels through the model's context and into the session transcript — and so does a
+decrypted message returned from one. For a confidentiality tool that is self-defeating.
+
+So the MCP server inspects, verifies, explains, and manages public contacts. Everything touching a
+passphrase or plaintext is `parseltongue-capsule` at a terminal, which reads passphrases from a
+TTY and prints messages nowhere else.
+
+## Quick start
+
+```bash
+parseltongue-capsule init --label "Your Name"
+parseltongue-capsule backup --out identity-backup.txt     # there is no recovery
+parseltongue-capsule verify-backup --in identity-backup.txt
+parseltongue-capsule card --out my-card.txt               # share this
+
+parseltongue-capsule add-contact alice alice-card.txt     # confirm fingerprints by voice
+parseltongue-capsule seal --to alice --message "..." --out capsule.txt
+parseltongue-capsule open --in capsule.txt --from alice
+parseltongue-capsule wizard                               # offline inspector in a browser
+```
 
 ## Licensing
 
@@ -71,8 +96,9 @@ npm test
 ## Tests
 
 ```bash
-npm test              # seam guard + license consistency + unit tests
-npm run check:seam    # Apache-2.0 boundary of capsule-core
+npm test               # all guards + 104 tests
+npm run check:all      # seam + license consistency + artifact guard
+npm run check:secrets  # no vault/backup/capsule anywhere in the tree
 ```
 
 Both guards fail loudly if they inspect zero files. A check that covered nothing is not a pass.

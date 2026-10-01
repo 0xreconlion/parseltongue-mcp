@@ -3,54 +3,73 @@
 /**
  * @reconlion/capsule-core - Apache-2.0
  *
- * Local secure message capsules. Phase B; the surface is declared here so the shape is
- * reviewable and the license seam guard has real source to inspect, but nothing is implemented
- * yet. Every entry point throws rather than returning a plausible-looking value, because a
- * crypto module that silently no-ops is worse than one that is absent.
+ * Local secure message capsules. Create an identity, exchange public contact cards, seal a
+ * message to someone, send it through any channel you already use, open and verify it locally.
  *
- * DESIGN CONSTRAINTS (these are the reason this package exists separately):
+ * No network, no relay, no accounts, no hosted anything. This package does no file I/O either -
+ * it returns records for a caller to persist, which keeps path handling out of the crypto.
+ *
+ * DESIGN CONSTRAINTS
  *
  *  - This package must never import from @reconlion/parseltongue-bridge or any P4RS3LT0NGV3
- *    source. Parseltongue transforms are *representation*, not confidentiality. Keeping them
- *    out keeps this package Apache-2.0 and reusable, and keeps the security boundary legible.
- *    Enforced by scripts/check-license-seam.js.
+ *    source. Parseltongue transforms are *representation*, not confidentiality. Keeping them out
+ *    keeps this package Apache-2.0 and separately reusable, and keeps the security boundary
+ *    legible. Enforced by scripts/check-license-seam.js.
  *
- *  - Established primitives only: X25519 + Ed25519 (@noble/curves), XChaCha20-Poly1305
- *    (@noble/ciphers), HKDF-SHA256 (@noble/hashes). No custom cryptography.
+ *  - Established primitives only, no custom cryptography: X25519 + Ed25519 (@noble/curves),
+ *    XChaCha20-Poly1305 (@noble/ciphers), HKDF-SHA256 and Argon2id (@noble/hashes).
  *
- *  - The full capsule header is bound into the AEAD associated data, so tampering with
- *    *visible metadata* breaks verification, not just ciphertext tampering.
+ *  - The full visible capsule header is bound into the AEAD as associated data and covered by the
+ *    signature, so tampering with *visible metadata* breaks both decryption and verification.
  *
- *  - No private key material may ever appear in a return value destined for an MCP response,
- *    a log line, or a contact card. Only export_identity_backup returns key material, and only
- *    passphrase-wrapped.
+ *  - No private key material may appear in a return value destined for an MCP response, a log
+ *    line, or a contact card. Only exportBackup returns key material, and only
+ *    passphrase-wrapped. Asserted by test, not by inspection.
  *
- *  - There is no account recovery. That makes export/import of an identity backup a shipping
- *    gate, not a nicety: on an SD card, "no recovery" otherwise means guaranteed eventual loss.
+ *  - There is no account recovery. exportBackup/importBackup are therefore a shipping gate.
  */
 
-const NOT_IMPLEMENTED = 'capsule-core is Phase B and not implemented yet';
-
-function notImplemented(name) {
-  return function () {
-    throw new Error(`${name}: ${NOT_IMPLEMENTED}`);
-  };
-}
+const capsule = require('./capsule');
+const codec = require('./codec');
+const identity = require('./identity');
+const vault = require('./vault');
+const backup = require('./backup');
 
 module.exports = {
-  CAPSULE_FORMAT_VERSION: 1,
+  CAPSULE_FORMAT_VERSION: capsule.CAPSULE_VERSION,
+  VAULT_VERSION: vault.VAULT_VERSION,
+  BACKUP_VERSION: backup.BACKUP_VERSION,
+
+  CapsuleError: capsule.CapsuleError,
+  IdentityError: identity.IdentityError,
+  VaultError: vault.VaultError,
+  BackupError: backup.BackupError,
 
   // Identity and contacts
-  createIdentity: notImplemented('createIdentity'),
-  exportContactCard: notImplemented('exportContactCard'),
-  importContactCard: notImplemented('importContactCard'),
+  createIdentity: identity.createIdentity,
+  derivePublic: identity.derivePublic,
+  exportContactCard: identity.exportContactCard,
+  importContactCard: identity.importContactCard,
+
+  // Vault
+  createVault: vault.create,
+  unlockVault: vault.unlock,
+  changeVaultPassphrase: vault.changePassphrase,
+  MIN_PASSPHRASE_LENGTH: vault.MIN_PASSPHRASE_LENGTH,
 
   // Capsules
-  sealCapsule: notImplemented('sealCapsule'),
-  openCapsule: notImplemented('openCapsule'),
-  inspectCapsule: notImplemented('inspectCapsule'),
+  sealCapsule: capsule.sealCapsule,
+  openCapsule: capsule.openCapsule,
+  inspectCapsule: capsule.inspectCapsule,
+  toEnvelope: capsule.toEnvelope,
+  fromEnvelope: capsule.fromEnvelope,
+  MAX_PAYLOAD_BYTES: capsule.MAX_PAYLOAD_BYTES,
 
   // Recovery - a shipping gate, see above
-  exportIdentityBackup: notImplemented('exportIdentityBackup'),
-  importIdentityBackup: notImplemented('importIdentityBackup'),
+  exportIdentityBackup: backup.exportBackup,
+  importIdentityBackup: backup.importBackup,
+  MIN_BACKUP_PASSPHRASE: backup.MIN_BACKUP_PASSPHRASE,
+
+  // Utilities worth exposing
+  fingerprint: codec.fingerprint,
 };

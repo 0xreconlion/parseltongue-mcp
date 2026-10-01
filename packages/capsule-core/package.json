@@ -8,6 +8,10 @@
   "engines": {
     "node": ">=20"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@noble/ciphers": "^2.4.0",
+    "@noble/curves": "^2.4.0",
+    "@noble/hashes": "^2.4.0"
+  },
   "comment:license": "Apache-2.0 deliberately, and deliberately isolated. This package must never import from @reconlion/parseltongue-bridge or any P4RS3LT0NGV3 source, or it becomes an AGPL derivative and loses its standalone reusability. Enforced by scripts/check-license-seam.js, not by convention."
 }

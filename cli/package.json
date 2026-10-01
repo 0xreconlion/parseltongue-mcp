@@ -1,14 +1,18 @@
 {
   "name": "@reconlion/parseltongue-capsule-cli",
-  "version": "0.0.0",
-  "private": true,
-  "description": "Human-operable CLI for secure capsules. Phase B - not implemented.",
+  "version": "0.1.0",
+  "description": "Human-operable CLI for local secure message capsules. Holds all passphrase and plaintext handling.",
   "license": "AGPL-3.0-only",
   "type": "commonjs",
   "main": "src/index.js",
   "engines": {
     "node": ">=20"
   },
-  "dependencies": {},
-  "comment:status": "Phase B. This is the path that works over SSH on the Pi and the path a recipient can run without any MCP client."
+  "dependencies": {
+    "@reconlion/capsule-core": "0.1.0"
+  },
+  "bin": {
+    "parseltongue-capsule": "src/index.js"
+  },
+  "comment:boundary": "This CLI exists as a SECURITY BOUNDARY, not for convenience. Passphrases and decrypted plaintext are handled here and never in an MCP tool, because an MCP tool argument or result travels through the model context and the session transcript."
 }
