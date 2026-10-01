@@ -1,5 +1,13 @@
 # parseltongue-mcp
 
+Hide an encrypted message inside one that looks completely ordinary.
+
+```
+you send:   "Hey! Running late, see you at the thing 🙂"      ← what they see
+you also:   gray-dock-perch-8937-garlic-poem-cobra           ← the code, sent a DIFFERENT way
+they get:   east gate, 0400                                   ← the message underneath
+```
+
 Two MCP servers, one repo.
 
 1. **`parseltongue-transforms`** — the [P4RS3LT0NGV3](https://github.com/elder-plinius/P4RS3LT0NGV3)
@@ -37,7 +45,8 @@ concealment wrapper explicitly and states that it adds no confidentiality.
 | `packages/capsule-core` | live — X25519 / Ed25519 / XChaCha20-Poly1305 / Argon2id |
 | `servers/capsules` | live — 7 tools, none of which can hold a secret |
 | `cli/parseltongue-capsule` | live — all passphrase and plaintext handling |
-| `wizard/wizard.html` | live — offline inspector, no network |
+| `wizard/index.html` | live — explainer + offline checker, zero dependencies |
+| sealed notes (shared code) | live — `conceal_message` / `reveal_message`, no identity needed |
 
 104 tests. Security review notes, including what was found and fixed, are in
 [`docs/SECURITY.md`](docs/SECURITY.md). It is a self-review, not an external audit.
@@ -51,6 +60,41 @@ decrypted message returned from one. For a confidentiality tool that is self-def
 So the MCP server inspects, verifies, explains, and manages public contacts. Everything touching a
 passphrase or plaintext is `parseltongue-capsule` at a terminal, which reads passphrases from a
 TTY and prints messages nowhere else.
+
+## Two modes
+
+| | Shared code (sealed notes) | Identity (capsules) |
+|---|---|---|
+| Setup | **none** | create identity, exchange cards, verify fingerprints |
+| Proves who sent it | no | **yes**, Ed25519 signature |
+| Hides that it exists | **yes**, invisible carrier | no, obviously a capsule |
+| Use when | two people can agree a code | authorship matters |
+
+## Hidden messages — the short path
+
+```bash
+parseltongue-capsule styles                    # carrier options
+parseltongue-capsule conceal --in secret.txt \
+    --cover "running late, see you there" --out message.txt
+parseltongue-capsule reveal --in message.txt   # asks for the code
+```
+
+Or as MCP tools: `conceal_options` → `conceal_message` → `reveal_message`.
+
+**Send the code by a different route than the message.** If both travel the same way, anyone
+reading that channel reads the message and the encryption bought you nothing. That is the whole
+security of the scheme and the realistic way it fails.
+
+Carrier styles, measured:
+
+| Style | Cover text | They see | Size |
+|---|---|---|---|
+| `invisible` (default) | yes | only your cover message | 1× |
+| `zerowidth` | yes | only your cover message | 4× |
+| `emoji` | **no** | a string of emoji | 1× |
+
+`emoji` cannot take cover text — its decoder consumes every emoji it is given, including any in
+your cover, which corrupts the payload.
 
 ## Quick start
 
@@ -77,6 +121,17 @@ enforced by `npm run check:seam` and `npm run check:licenses`, not by convention
 
 Full reasoning, and what AGPL section 13 would require if this is ever hosted:
 [`docs/LICENSING.md`](docs/LICENSING.md).
+
+## Hosting
+
+**Do not host the MCP server.** Hosting it means the operator's machine derives the key and holds
+every user's plaintext — which makes every local-first claim in this README false. The crypto
+would port to a Worker; the transform catalog would not (`node:vm`). Neither fact changes the
+answer.
+
+Host `wizard/index.html` instead: one self-contained file, all work in the visitor's browser,
+nothing reaching a server. Reasoning and the deployment path in
+[`docs/HOSTING.md`](docs/HOSTING.md).
 
 ## Requirements
 

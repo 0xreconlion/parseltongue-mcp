@@ -412,8 +412,118 @@ async function cmdStatus() {
   }
 }
 
+// ---------------------------------------------------------------- sealed notes
+//
+// The no-transcript path for the conceal/reveal flow. Same crypto as the MCP tools; the code is
+// typed at a TTY or printed to the terminal, and the revealed message prints here and nowhere else.
+
+async function cmdConceal(args) {
+  const bridge = require('@reconlion/parseltongue-bridge');
+
+  const style = args.style || 'invisible';
+  const coverText = args.cover !== undefined ? String(args.cover) : '';
+  const secret = args.message !== undefined ? String(args.message) : readInput(args.in || args._[0]);
+  if (!secret.trim()) throw new Error('refusing to conceal an empty message');
+
+  if (args.message !== undefined) {
+    err('note: --message is recorded in your shell history. Use --in <file> or pipe on stdin.');
+  }
+
+  // A supplied code goes through the TTY, never an argument, for the same reason.
+  let code = null;
+  if (args.code) {
+    code = await prompt.passphrase('Decrypt code to use');
+  }
+
+  const sealed = core.sealNote({ payload: secret, code });
+  const concealed = bridge.conceal({
+    payload: sealed.envelope,
+    style,
+    coverText,
+  });
+
+  const written = writeOutput(concealed.artifact, args.out);
+
+  err('');
+  err('SEND THIS — copy the whole thing, invisible characters included:');
+  if (written) {
+    out(`  (written to ${written})`);
+  } else {
+    out(concealed.artifact);
+  }
+  err('');
+  err('SEND THIS SEPARATELY — the decrypt code:');
+  err('');
+  err(`    ${sealed.code}`);
+  err(`    ${sealed.codeGenerated ? 'generated' : 'yours'}, ~${sealed.codeEntropyBits} bits`);
+  err('');
+  err(`Recipient sees : ${concealed.visiblePreview || '(a string of emoji)'}`);
+  err(`Artifact size  : ${concealed.sizes.artifactChars} chars (${concealed.sizes.visibleChars} visible)`);
+  err(`Carrier style  : ${concealed.style}`);
+  err('');
+  err(`!! ${sealed.warning}`);
+  for (const w of concealed.warnings) { err(''); err(`!! ${w}`); }
+  if (concealed.sizes.artifactChars > 2000) {
+    err('');
+    err(`!! ${concealed.sizes.artifactChars} characters exceeds some chat limits (Discord cuts at 2000).`);
+  }
+}
+
+async function cmdReveal(args) {
+  const bridge = require('@reconlion/parseltongue-bridge');
+  const artifact = readInput(args.in || args._[0]);
+
+  let found;
+  try {
+    found = bridge.revealConcealed({ artifact });
+  } catch (error) {
+    const look = bridge.looksConcealed(artifact);
+    throw new Error(
+      `${error.message}\n` +
+        (look.likely
+          ? `There are ${look.hiddenCharacters} invisible characters present, so something is ` +
+            'hidden but could not be read - the concealment was probably partly stripped in ' +
+            'transit. Ask for it as a file attachment.'
+          : 'No invisible characters at all. Either nothing was hidden, or whatever carried the ' +
+            'message removed them silently.')
+    );
+  }
+
+  const code = await prompt.passphrase('Decrypt code');
+  err('Deriving the key (Argon2id)...');
+  const opened = core.openNote({ note: found.payload, code });
+
+  // Plaintext to stdout only. Never returned through an agent, never logged, never stored.
+  err('');
+  err(`--- hidden message (note ${opened.noteId}, carrier: ${found.style}) ---`);
+  out(opened.payload);
+  err('--- end ---');
+  err('');
+  err(`sealed at: ${opened.created}  (sender's clock, not verifiable)`);
+  err(opened.authorship);
+}
+
+async function cmdStyles() {
+  const bridge = require('@reconlion/parseltongue-bridge');
+  const styles = bridge.describeConcealStyles({ payloadLength: 450, hasCoverText: false });
+  out('Carrier styles for hiding a sealed message:');
+  out('');
+  for (const style of styles) {
+    out(`${style.style.toUpperCase()}  —  ${style.label}`);
+    out(`  recipient sees  ${style.recipientSees}`);
+    out(`  cover text      ${style.coverTextSupported ? 'supported' : 'NOT supported'}`);
+    out(`  size            ~${style.estimatedCarrierChars} chars for a short message`);
+    out(`  best for        ${style.bestFor}`);
+    for (const caveat of style.caveats) out(`  note            ${caveat}`);
+    out('');
+  }
+  out('The payload is encrypted before concealment. Concealment stops it LOOKING like a secret;');
+  out('encryption is what makes it one.');
+}
+
 async function cmdWizard(args) {
-  const file = path.join(__dirname, '..', '..', 'wizard', 'wizard.html');
+  const which = args.capsules ? 'wizard.html' : 'index.html';
+  const file = path.join(__dirname, '..', '..', 'wizard', which);
   if (!fs.existsSync(file)) throw new Error(`wizard not found at ${file}`);
   out(`wizard: ${file}`);
   if (args['no-open']) return;
@@ -445,14 +555,20 @@ function cmdHelp() {
   out('  add-contact <name> [file]          import someone else\'s card');
   out('  contacts                           list imported contacts');
   out('');
-  out('Messages');
+  out('Hidden messages (shared code - no identity needed)');
+  out('  styles                             carrier styles and what each looks like');
+  out('  conceal [--in <file>] [--cover "visible text"] [--style invisible|zerowidth|emoji]');
+  out('                                     hide a message; prints the artifact and the code');
+  out('  reveal [--in <file>]               read a hidden message (asks for the code)');
+  out('');
+  out('Messages (public-key - proves who sent it)');
   out('  seal --to <contact> [--message <text> | --in <file>] [--subject <s>] [--out <file>]');
   out('  open [--in <file>] [--from <contact>]');
   out('  inspect [--in <file>]              structure and signature, no passphrase needed');
   out('');
   out('Other');
   out('  status                             what exists on this machine');
-  out('  wizard                             open the offline inspector in a browser');
+  out('  wizard [--capsules]                open the offline explainer (or the capsule inspector)');
   out('');
   out('Passphrases are typed at this terminal and never pass through an agent or a transcript.');
   out('Decrypted messages print here only. That is deliberate: a secure message piped through a');
@@ -495,6 +611,9 @@ const COMMANDS = {
   passphrase: cmdPassphrase,
   status: cmdStatus,
   wizard: cmdWizard,
+  conceal: cmdConceal,
+  reveal: cmdReveal,
+  styles: cmdStyles,
 };
 
 async function main() {

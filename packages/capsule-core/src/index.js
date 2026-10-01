@@ -34,6 +34,7 @@ const codec = require('./codec');
 const identity = require('./identity');
 const vault = require('./vault');
 const backup = require('./backup');
+const sealed = require('./sealed');
 
 module.exports = {
   CAPSULE_FORMAT_VERSION: capsule.CAPSULE_VERSION,
@@ -69,6 +70,21 @@ module.exports = {
   exportIdentityBackup: backup.exportBackup,
   importIdentityBackup: backup.importBackup,
   MIN_BACKUP_PASSPHRASE: backup.MIN_BACKUP_PASSPHRASE,
+
+  // Sealed notes - symmetric "decrypt code" encryption, no identities required
+  SEALED_VERSION: sealed.SEALED_VERSION,
+  SealedError: sealed.SealedError,
+  sealNote: sealed.sealNote,
+  openNote: sealed.openNote,
+  inspectNote: sealed.inspectNote,
+  noteToEnvelope: sealed.toEnvelope,
+  noteFromEnvelope: sealed.fromEnvelope,
+  generateCode: sealed.generateCode,
+  assertCodeStrength: sealed.assertCodeStrength,
+  estimateCodeEntropyBits: sealed.estimateCodeEntropyBits,
+  guessableReason: sealed.guessableReason,
+  codeEntropyBits: sealed.codeEntropyBits,
+  MIN_CODE_ENTROPY_BITS: sealed.MIN_CODE_ENTROPY_BITS,
 
   // Utilities worth exposing
   fingerprint: codec.fingerprint,

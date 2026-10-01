@@ -28,4 +28,36 @@ regexes = [
   '''HKDF-SHA-256''',
   '''Ed25519''',
   '''X25519''',
+  '''argon2id''',
+]
+
+[[allowlists]]
+description = """
+Known-worthless passwords, present as fixtures because the tool must REJECT them. \
+`sealed.js` carries a list of the passwords people actually pick so it can refuse them, and \
+`test/sealed.test.js` asserts each one is refused. gitleaks' generic-api-key rule fires on \
+`qwertyuiop123` on entropy alone.
+
+These strings are the opposite of secrets: every one is in every cracking dictionary in \
+existence, which is precisely why they are hard-coded here. Allowlisting them costs nothing — if \
+one were ever someone's real credential it would already be worthless.
+
+Deliberately NOT scoped with `paths`: gitleaks defaults a paths+regexes allowlist to OR, so \
+naming a file there exempts the ENTIRE FILE, and a real credential added beside these would sail \
+through. (That mistake was found and fixed in reconlion-operator's config on 2026-09-10 after a \
+planted live-format token passed the gate.) Each entry below matches only its own literal string, \
+so anything else in any file still trips the gate — re-verified 2026-10-01 by planting a \
+live-format GitHub token in this repo and confirming it was blocked.
+"""
+regexTarget = "line"
+regexes = [
+  '''qwertyuiop123''',
+  '''p@ssw0rd''',
+  '''password123''',
+  '''PASSWORD123''',
+  '''Password-123''',
+  '''1q2w3e4r''',
+  '''trustno1''',
+  '''correcthorsebatterystaple''',
+  '''Tr0ub4dor''',
 ]

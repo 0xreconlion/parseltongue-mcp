@@ -16,6 +16,7 @@ const { getRegistry, publicEntry, defaultOptions } = require('./registry');
 const { findTransform, findTransforms } = require('./find');
 const { TransformError, autoDecode, runTransform } = require('./run');
 const { inspectText } = require('./inspect');
+const conceal = require('./conceal');
 
 /** Every transform's public metadata, optionally filtered. */
 function listTransforms({ category = null, canDecode = null, fidelity = null } = {}) {
@@ -57,6 +58,15 @@ function catalogSummary() {
 module.exports = {
   ParseltongueRootError,
   TransformError,
+  ConcealError: conceal.ConcealError,
+
+  // Concealment layer - carriers for already-encrypted payloads
+  CONCEAL_STYLES: conceal.STYLE_NAMES,
+  conceal: conceal.conceal,
+  describeConcealStyles: conceal.describeStyles,
+  looksConcealed: conceal.looksConcealed,
+  revealConcealed: conceal.reveal,
+  visibleOf: conceal.visibleOf,
 
   autoDecode,
   catalogSummary,

@@ -27,16 +27,43 @@ const PROTOCOL_VERSION = '2025-06-18';
 // versa) fails the suite, so the boundary cannot drift by accident.
 const EXPECTED_TOOLS = [
   'capsule_status',
+  'conceal_message',
+  'conceal_options',
   'draft_capsule_command',
   'explain_capsule_security',
   'export_my_contact_card',
   'import_contact_card',
   'inspect_capsule',
+  'reveal_message',
   'verify_contact_card',
 ];
 
-// Anything matching these in a tool's schema would mean a secret can be passed in.
-const FORBIDDEN_INPUT_FIELDS = /passphrase|password|private|secret|seed|mnemonic/i;
+/**
+ * Tools that return a secret in their response ON PURPOSE.
+ *
+ * The sealed-note flow requires it: person A cannot transmit a decrypt code they cannot see, and
+ * person B cannot read a message they only receive a file path to. An earlier design returned a
+ * path instead of the plaintext and was useless for the job.
+ *
+ * Enumerating them is the point. A deliberate exception that is not written down is
+ * indistinguishable from a leak, so the whole-session sweep below allows exactly these fields on
+ * exactly these tools and fails on a secret appearing anywhere else.
+ */
+const SECRET_BEARING = {
+  conceal_message: ['code', 'artifact'],
+  reveal_message: ['plaintext'],
+};
+
+/**
+ * Field names that would mean a long-lived credential can be passed in.
+ *
+ * Narrowed deliberately. A first version included `secret`, which false-positived on
+ * `conceal_message`'s `secret` (the message to hide — the whole input) and on
+ * `conceal_options`'s `secret_length` (a number). The thing that must never cross this boundary
+ * is the VAULT PASSPHRASE, which protects every capsule ever sent to an identity. A per-message
+ * shared code is a different kind of thing and the sealed-note flow cannot work without it.
+ */
+const FORBIDDEN_INPUT_FIELDS = /passphrase|password|private_key|\bseed\b|mnemonic|vault/i;
 
 class Client {
   constructor(env) {
@@ -172,30 +199,52 @@ describe('capsules server over stdio', () => {
     assert.deepEqual(result.tools.map((t) => t.name).sort(), EXPECTED_TOOLS);
   });
 
-  it('has no seal or open tool — that is the boundary, not an omission', async () => {
+  it('has no capsule seal or open tool — that is the boundary, not an omission', async () => {
     const { result } = await client.request('tools/list', {});
     const names = result.tools.map((t) => t.name);
+    // The public-key path keeps its boundary: a vault passphrase protects every message ever sent
+    // to that identity, so it never becomes a tool argument. The sealed-note path is different
+    // (one code, one message) and is handled by conceal/reveal above.
     for (const forbidden of ['seal_capsule', 'open_capsule', 'create_identity', 'unlock_vault', 'export_identity_backup']) {
       assert.ok(
         !names.includes(forbidden),
-        `${forbidden} must not exist on this server: it would require a passphrase or return ` +
-          'plaintext, either of which lands in the model context and the session transcript'
+        `${forbidden} must not exist on this server: it would require a VAULT passphrase, which ` +
+          'protects every message ever sent to that identity'
       );
     }
   });
 
-  it('accepts no secret-shaped input on any tool', async () => {
+  it('accepts no vault passphrase on any tool', async () => {
     const { result } = await client.request('tools/list', {});
     for (const toolDef of result.tools) {
-      const schema = JSON.stringify(toolDef.inputSchema || {});
       const fields = Object.keys((toolDef.inputSchema && toolDef.inputSchema.properties) || {});
       for (const field of fields) {
+        // `code` is permitted on the sealed-note tools: a per-message shared code is not a vault
+        // passphrase, and the flow cannot work without it crossing this boundary.
+        if (field === 'code' && SECRET_BEARING[toolDef.name]) continue;
         assert.ok(
           !FORBIDDEN_INPUT_FIELDS.test(field),
-          `${toolDef.name} accepts a "${field}" parameter; secrets must not be tool arguments`
+          `${toolDef.name} accepts a "${field}" parameter; a vault passphrase must never be a tool argument`
         );
       }
-      assert.ok(!/"passphrase"/.test(schema), `${toolDef.name} schema mentions a passphrase`);
+      assert.ok(
+        !/passphrase/i.test(JSON.stringify(toolDef.inputSchema || {})),
+        `${toolDef.name} schema mentions a passphrase`
+      );
+    }
+  });
+
+  it('warns about transcript retention on every tool that returns a secret', async () => {
+    const { result } = await client.request('tools/list', {});
+    for (const name of Object.keys(SECRET_BEARING)) {
+      const toolDef = result.tools.find((t) => t.name === name);
+      assert.ok(toolDef, `${name} is missing`);
+      // The exposure has to be stated where a caller will see it before calling, not only after.
+      assert.match(
+        toolDef.description,
+        /transcript/i,
+        `${name} returns a secret but its description does not mention the transcript`
+      );
     }
   });
 
@@ -393,6 +442,85 @@ describe('capsules server over stdio', () => {
     });
   });
 
+  describe('sealed-note flow', () => {
+    let artifact;
+    let code;
+    const COVER = 'Hey! Running late, see you at the thing';
+    const SECRET = 'east gate 0400, bring the drive';
+
+    it('offers the styles with cover-text compatibility resolved', async () => {
+      const result = await client.callTool('conceal_options', {
+        secret_length: 30,
+        with_cover_text: true,
+      });
+      const emoji = result.structuredContent.styles.find((s) => s.style === 'emoji');
+      assert.equal(emoji.compatibleWithYourRequest, false);
+      assert.match(result.content[0].text, /NOT supported/);
+      // Must explain that encryption, not concealment, is what makes it secret.
+      assert.match(result.content[0].text, /Encryption is what makes it one/);
+    });
+
+    it('conceals, returning one artifact plus the code', async () => {
+      const result = await client.callTool('conceal_message', {
+        secret: SECRET,
+        cover_text: COVER,
+      });
+      const data = result.structuredContent;
+      artifact = data.artifact;
+      code = data.code;
+
+      // The whole feature: the recipient sees the cover text and nothing else.
+      assert.equal(data.visible_preview, COVER);
+      assert.ok(data.sizes.artifactChars > data.sizes.visibleChars);
+      assert.equal(data.code_generated, true);
+      assert.ok(data.code_entropy_bits >= 50);
+      // And the one mistake that destroys the scheme is stated in the output, not a README.
+      assert.match(result.content[0].text, /SEND THIS SEPARATELY/);
+      assert.match(result.content[0].text, /DIFFERENT route/);
+      assert.match(result.content[0].text, /transcript/i);
+    });
+
+    it('reveals the hidden message inline, which is the point', async () => {
+      const result = await client.callTool('reveal_message', { artifact, code });
+      assert.equal(result.structuredContent.plaintext, SECRET);
+      assert.equal(result.structuredContent.style, 'invisible');
+      assert.match(result.content[0].text, /HIDDEN MESSAGE/);
+      // It must not claim the sender is proven.
+      assert.match(result.structuredContent.authorship, /cannot prove who that was/);
+    });
+
+    it('refuses a wrong code without saying whether the note was tampered with', async () => {
+      const result = await client.callTool('reveal_message', { artifact, code: 'river-amber-9312-vault-crisp-mesa' });
+      assert.equal(result.isError, true);
+      assert.match(result.content[0].text, /wrong code, or the note was altered/);
+    });
+
+    it('explains the difference between nothing hidden and concealment stripped', async () => {
+      const nothing = await client.callTool('reveal_message', {
+        artifact: 'just an ordinary message',
+        code,
+      });
+      assert.equal(nothing.isError, true);
+      assert.match(nothing.content[0].text, /No invisible characters at all/);
+    });
+
+    it('refuses a weak user-supplied code with the reason', async () => {
+      const result = await client.callTool('conceal_message', { secret: 'x', code: 'password123' });
+      assert.equal(result.isError, true);
+      assert.match(result.content[0].text, /will not do|too weak/);
+    });
+
+    it('refuses emoji style with cover text', async () => {
+      const result = await client.callTool('conceal_message', {
+        secret: 'x',
+        style: 'emoji',
+        cover_text: 'hi',
+      });
+      assert.equal(result.isError, true);
+      assert.match(result.content[0].text, /cannot carry cover text/);
+    });
+  });
+
   it('explains what is not protected', async () => {
     const result = await client.callTool('explain_capsule_security', { topic: 'all' });
     const text = result.content[0].text;
@@ -409,6 +537,11 @@ describe('capsules server over stdio', () => {
 
   it('NO RESPONSE anywhere in this session contained key material', () => {
     // The whole-session sweep. Every byte the server wrote to stdout across every call above.
+    //
+    // Private keys, vault passphrases and capsule plaintext must appear NOWHERE, with no
+    // exceptions. The sealed-note secrets are handled separately in the next test, because they
+    // are returned on purpose and a blanket assertion here would have to be weakened to
+    // accommodate them — which is exactly how a real leak gets waved through.
     const everything = client.allResponses.join('\n');
     const secrets = {
       'alice signing key': alice.secret.sign,
@@ -421,9 +554,60 @@ describe('capsules server over stdio', () => {
     for (const [name, secret] of Object.entries(secrets)) {
       assert.ok(!everything.includes(secret), `a tool response leaked ${name}`);
     }
-    // And a positive control, so this cannot pass because allResponses is empty.
-    assert.ok(client.allResponses.length >= 10, 'expected many responses to have been captured');
+    // Positive controls, so this cannot pass because nothing was captured.
+    assert.ok(client.allResponses.length >= 15, 'expected many responses to have been captured');
     assert.ok(everything.includes('PARSELTONGUE CONTACT CARD'), 'sanity: real content was captured');
+  });
+
+  it('sealed-note secrets appear ONLY in the two tools allowed to return them', async () => {
+    // The deliberate exceptions, verified rather than assumed. Each secret-bearing tool is called
+    // with a unique canary, then every OTHER tool is called and swept for it.
+    const canarySecret = 'CANARY-SEALED-PLAINTEXT-0db7';
+    const concealed = await client.callTool('conceal_message', {
+      secret: canarySecret,
+      cover_text: 'ordinary message',
+    });
+    const canaryCode = concealed.structuredContent.code;
+    const canaryArtifact = concealed.structuredContent.artifact;
+
+    // The allowance is narrow: the canary may appear in reveal_message's `plaintext`, and the code
+    // in conceal_message's `code`. Nowhere else.
+    const revealed = await client.callTool('reveal_message', {
+      artifact: canaryArtifact,
+      code: canaryCode,
+    });
+    assert.equal(revealed.structuredContent.plaintext, canarySecret);
+
+    const otherCalls = [
+      ['capsule_status', {}],
+      ['conceal_options', { secret_length: 10 }],
+      ['inspect_capsule', { capsule: capsuleEnvelope }],
+      ['verify_contact_card', { card: aliceCard }],
+      ['export_my_contact_card', {}],
+      ['explain_capsule_security', { topic: 'all' }],
+      ['draft_capsule_command', { action: 'open', capsule_file: 'c.txt' }],
+      // Looks at the artifact but must not decode it: no code was given.
+      ['inspect_capsule', { capsule: canaryArtifact }],
+    ];
+
+    for (const [name, args] of otherCalls) {
+      const result = await client.callTool(name, args);
+      const serialised = JSON.stringify(result);
+      assert.ok(
+        !serialised.includes(canarySecret),
+        `${name} leaked the sealed-note plaintext; only reveal_message may return it`
+      );
+      assert.ok(
+        !serialised.includes(canaryCode),
+        `${name} leaked the decrypt code; only conceal_message may return it`
+      );
+    }
+
+    // And the detector works — without this the loop above could be passing vacuously.
+    assert.ok(
+      JSON.stringify(revealed).includes(canarySecret),
+      'positive control failed: reveal_message should contain the canary'
+    );
   });
 
   it('wrote nothing but JSON to stdout', () => {

@@ -1,0 +1,699 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Parseltongue — hidden messages under a safe cover</title>
+<meta name="description" content="Encrypt a message under a shared code, hide it inside an ordinary-looking one. Local-first, offline, no accounts.">
+<!--
+  OFFLINE AND SELF-CONTAINED. No script src, no link href, no fetch, no fonts, no analytics.
+  Open it off the filesystem; it works with the network unplugged. A strict CSP would find nothing
+  to block.
+
+  WHAT THIS PAGE DELIBERATELY WILL NOT DO
+  ---------------------------------------
+  It does not offer to hide arbitrary text. Concealment without encryption is reversible by
+  anyone, and a button labelled "hide this message" would be used by people who believe it makes
+  them safe. That is the exact confusion the whole project exists to prevent, so the capability is
+  absent rather than warned about.
+
+  It also does not decrypt. Decryption needs Argon2id and XChaCha20-Poly1305, and WebCrypto has
+  neither, so it would mean shipping a bundled crypto library into this file. The concealment
+  layer is pure Unicode string work and runs here with no dependencies at all; the crypto stays in
+  one implementation. So this page will tell you a sealed note is present and hand you the
+  envelope — the CLI or the MCP tool opens it.
+
+  Brand tokens are the canonical reconlion.io v2 set: teal structural, amber CTA only, flat darks,
+  no gradients.
+-->
+<style>
+  :root {
+    --void: #080C10;
+    --surface: #0D1117;
+    --raised: #161B22;
+    --teal: #2DD8DF;
+    --teal-dim: rgba(45, 216, 223, 0.15);
+    --teal-glow: rgba(45, 216, 223, 0.08);
+    --teal-border: rgba(45, 216, 223, 0.25);
+    --border-active: rgba(45, 216, 223, 0.4);
+    --amber: #F5A623;
+    --amber-dim: rgba(245, 166, 35, 0.12);
+    --green: #39D353;
+    --red: #FF4444;
+    --ink: #E6EDF3;
+    --ink-2: #8B949E;
+    --ink-3: #484F58;
+    --border-dim: #21262D;
+    --border-mid: #30363D;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  html { background: var(--void); }
+  body {
+    margin: 0;
+    background: var(--void);
+    color: var(--ink);
+    font: 15px/1.6 var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1020px; margin: 0 auto; padding: 0 20px 90px; }
+
+  /* ── header ─────────────────────────────────────────── */
+  header {
+    padding: 34px 0 20px;
+    border-bottom: 1px solid var(--border-dim);
+    margin-bottom: 0;
+  }
+  .glyph {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-family: var(--mono); font-size: 13px; font-weight: 700;
+    color: var(--amber);
+    border: 1px solid var(--amber);
+    padding: 3px 9px;
+    letter-spacing: 0.08em;
+  }
+  h1 {
+    font-family: var(--mono);
+    font-size: clamp(22px, 4vw, 31px);
+    margin: 16px 0 6px;
+    letter-spacing: -0.015em;
+    font-weight: 600;
+  }
+  h1 .sub { color: var(--teal); }
+  .tagline { color: var(--ink-2); font-size: 15px; max-width: 62ch; }
+  .meta-strip {
+    display: flex; flex-wrap: wrap; gap: 6px 18px;
+    margin-top: 18px;
+    font-family: var(--mono); font-size: 11px;
+    color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.07em;
+  }
+  .meta-strip b { color: var(--ink-2); font-weight: 500; }
+
+  /* ── nav ────────────────────────────────────────────── */
+  nav {
+    display: flex; gap: 0; flex-wrap: wrap;
+    border-bottom: 1px solid var(--border-dim);
+    margin-bottom: 30px;
+    position: sticky; top: 0; z-index: 5;
+    background: var(--void);
+  }
+  nav button {
+    font: inherit; font-family: var(--mono); font-size: 12px;
+    letter-spacing: 0.06em; text-transform: uppercase;
+    padding: 13px 17px; cursor: pointer;
+    background: none; color: var(--ink-3);
+    border: none; border-bottom: 2px solid transparent;
+    transition: color .12s;
+  }
+  nav button:hover { color: var(--ink-2); }
+  nav button[aria-selected="true"] { color: var(--teal); border-bottom-color: var(--teal); }
+
+  /* ── panels ─────────────────────────────────────────── */
+  .panel[hidden] { display: none; }
+  section.card {
+    background: var(--surface);
+    border: 1px solid var(--border-dim);
+    padding: 22px;
+    margin-bottom: 18px;
+  }
+  section.card > h2 {
+    font-family: var(--mono); font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--teal);
+    margin: 0 0 4px;
+    display: flex; align-items: center; gap: 9px;
+  }
+  section.card > h2::before {
+    content: ''; width: 5px; height: 5px; background: var(--teal); flex: none;
+  }
+  section.card > .hint { color: var(--ink-2); font-size: 13.5px; margin: 0 0 16px; max-width: 72ch; }
+  h3 { font-size: 14px; margin: 22px 0 7px; color: var(--ink); }
+  p { max-width: 74ch; }
+  a { color: var(--teal); text-decoration: none; border-bottom: 1px solid var(--teal-border); }
+  a:hover { border-bottom-color: var(--teal); }
+
+  /* ── the three-step flow ────────────────────────────── */
+  .flow { display: grid; gap: 1px; background: var(--border-dim); grid-template-columns: 1fr; }
+  @media (min-width: 720px) { .flow { grid-template-columns: repeat(3, 1fr); } }
+  .step { background: var(--surface); padding: 18px; position: relative; }
+  .step .n {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em;
+    color: var(--ink-3); text-transform: uppercase;
+  }
+  .step .t { font-weight: 600; margin: 6px 0 7px; font-size: 14.5px; }
+  .step .d { color: var(--ink-2); font-size: 13px; margin: 0; }
+  .step.me { border-top: 2px solid var(--teal); }
+  .step.them { border-top: 2px solid var(--amber); }
+
+  /* ── visible / hidden split ─────────────────────────── */
+  .split { display: grid; gap: 1px; background: var(--border-dim); grid-template-columns: 1fr; margin: 16px 0; }
+  @media (min-width: 680px) { .split { grid-template-columns: 1fr 1fr; } }
+  .half { background: var(--raised); padding: 16px; }
+  .half .cap {
+    font-family: var(--mono); font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 10px;
+  }
+  .half.open .cap { color: var(--amber); }
+  .half.shut .cap { color: var(--green); }
+  .half ul { margin: 0; padding-left: 17px; font-size: 13px; color: var(--ink-2); }
+  .half li { margin-bottom: 4px; }
+
+  /* ── form bits ──────────────────────────────────────── */
+  textarea {
+    width: 100%; min-height: 120px; resize: vertical;
+    font-family: var(--mono); font-size: 12.5px; line-height: 1.55;
+    padding: 12px;
+    background: var(--void); color: var(--ink);
+    border: 1px solid var(--border-mid);
+  }
+  textarea:focus { outline: none; border-color: var(--border-active); background: #06090c; }
+  .row { display: flex; gap: 9px; align-items: center; flex-wrap: wrap; margin-top: 13px; }
+  button.go {
+    font: inherit; font-family: var(--mono); font-size: 12px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.07em;
+    padding: 11px 20px; cursor: pointer;
+    background: var(--amber); color: #0b0b0b; border: none;
+  }
+  button.go:hover { filter: brightness(1.12); }
+  button.ghost {
+    font: inherit; font-family: var(--mono); font-size: 12px;
+    text-transform: uppercase; letter-spacing: 0.07em;
+    padding: 11px 15px; cursor: pointer;
+    background: none; color: var(--ink-2);
+    border: 1px solid var(--border-mid);
+  }
+  button.ghost:hover { color: var(--teal); border-color: var(--teal-border); }
+
+  /* ── results ────────────────────────────────────────── */
+  .verdict {
+    border-left: 2px solid var(--border-mid);
+    background: var(--raised);
+    padding: 13px 15px; margin-top: 18px; font-size: 13.5px;
+  }
+  .verdict.found { border-left-color: var(--green); background: rgba(57, 211, 83, 0.06); }
+  .verdict.none  { border-left-color: var(--ink-3); }
+  .verdict.warn  { border-left-color: var(--amber); background: var(--amber-dim); }
+  .verdict.bad   { border-left-color: var(--red); background: rgba(255, 68, 68, 0.07); }
+  .verdict .h { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.09em; margin-bottom: 6px; }
+  .verdict.found .h { color: var(--green); }
+  .verdict.warn .h { color: var(--amber); }
+  .verdict.bad .h { color: var(--red); }
+  .verdict.none .h { color: var(--ink-2); }
+
+  dl.kv { display: grid; grid-template-columns: auto 1fr; gap: 5px 16px; margin: 14px 0 0; font-size: 13px; }
+  dl.kv dt { font-family: var(--mono); font-size: 11px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap; padding-top: 2px; }
+  dl.kv dd { margin: 0; font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+
+  .bar { height: 6px; background: var(--void); border: 1px solid var(--border-mid); display: flex; margin: 12px 0 5px; }
+  .bar i { display: block; height: 100%; }
+  .bar i.vis { background: var(--amber); }
+  .bar i.hid { background: var(--teal); }
+  .barkey { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; }
+  .barkey b { font-weight: 500; }
+  .barkey .sw { display: inline-block; width: 8px; height: 8px; margin-right: 5px; vertical-align: -1px; }
+
+  pre {
+    background: var(--void); border: 1px solid var(--border-dim);
+    padding: 13px; overflow-x: auto;
+    font-family: var(--mono); font-size: 12px; margin: 11px 0; line-height: 1.6;
+  }
+  pre .c { color: var(--ink-3); }
+  pre .p { color: var(--teal); }
+  code { font-family: var(--mono); font-size: 0.9em; background: var(--raised); padding: 2px 6px; color: var(--teal); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 13px 0; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border-dim); vertical-align: top; }
+  th { font-family: var(--mono); font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600; }
+  td b { color: var(--ink); }
+  .yes { color: var(--green); }
+  .no { color: var(--red); }
+
+  .callout {
+    border: 1px solid var(--amber); border-left-width: 2px;
+    background: var(--amber-dim); padding: 15px 17px; margin: 20px 0;
+  }
+  .callout .h { font-family: var(--mono); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em; color: var(--amber); margin-bottom: 7px; }
+  .callout p { margin: 0; font-size: 13.5px; }
+  .callout p + p { margin-top: 9px; }
+
+  footer { margin-top: 44px; padding-top: 18px; border-top: 1px solid var(--border-dim); color: var(--ink-3); font-size: 12px; font-family: var(--mono); }
+  footer a { color: var(--ink-2); border-bottom-color: var(--border-mid); }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <span class="glyph">[ &gt;_ ]</span>
+  <h1>Parseltongue <span class="sub">// sealed notes</span></h1>
+  <p class="tagline">
+    Encrypt a message under a shared code, then hide it inside one that looks completely ordinary.
+    Local-first. No accounts, no relay, no server that could read it.
+  </p>
+  <div class="meta-strip">
+    <span><b>crypto</b> XChaCha20-Poly1305 · Argon2id</span>
+    <span><b>runs</b> offline</span>
+    <span><b>license</b> AGPL-3.0</span>
+  </div>
+</header>
+
+<nav role="tablist" aria-label="Sections">
+  <button role="tab" id="t-how" aria-selected="true" aria-controls="p-how">How it works</button>
+  <button role="tab" id="t-check" aria-selected="false" aria-controls="p-check">Check a message</button>
+  <button role="tab" id="t-use" aria-selected="false" aria-controls="p-use">Commands</button>
+  <button role="tab" id="t-limits" aria-selected="false" aria-controls="p-limits">What it won't do</button>
+</nav>
+
+<!-- ══════════════════════════ HOW ══════════════════════════ -->
+<div class="panel" id="p-how" role="tabpanel" aria-labelledby="t-how">
+
+  <section class="card">
+    <h2>Three steps</h2>
+    <p class="hint">
+      No identities, no key exchange, no setup. Two people, one code, one message that reads as
+      unremarkable.
+    </p>
+    <div class="flow">
+      <div class="step me">
+        <div class="n">01 — you</div>
+        <div class="t">Write the real message and a cover</div>
+        <p class="d">
+          The secret gets encrypted under a code. The cover is whatever you'd plausibly say —
+          "running late, see you there."
+        </p>
+      </div>
+      <div class="step me">
+        <div class="n">02 — you</div>
+        <div class="t">Send the cover one way, the code another</div>
+        <p class="d">
+          The message goes by chat or email. The code goes by voice, or any channel the first one
+          isn't. This separation <em>is</em> the security.
+        </p>
+      </div>
+      <div class="step them">
+        <div class="n">03 — them</div>
+        <div class="t">They read the hidden message</div>
+        <p class="d">
+          One command, or one tool call, with the message and the code. Everything happens on
+          their machine.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>What the message looks like</h2>
+    <p class="hint">
+      The payload rides as invisible characters alongside your cover text. A reader sees the cover
+      and nothing else — the example below is a real 495-character artifact carrying a sealed note.
+    </p>
+    <pre><span class="c">what they see</span>
+Hey! Running late, see you at the thing 🙂
+
+<span class="c">what is actually there</span>
+Hey! Running late, see you at the thing 🙂<span class="p">[454 invisible characters]</span></pre>
+    <div class="bar" aria-hidden="true"><i class="vis" style="width:8.3%"></i><i class="hid" style="width:91.7%"></i></div>
+    <div class="barkey">
+      <b><span class="sw" style="background:var(--amber)"></span>41 visible</b> &nbsp;
+      <b><span class="sw" style="background:var(--teal)"></span>454 hidden</b>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Encrypted vs merely hidden</h2>
+    <p class="hint">
+      These are different things and conflating them is the most common way people get hurt. Both
+      layers are present, doing different jobs.
+    </p>
+    <div class="split">
+      <div class="half shut">
+        <div class="cap">■ encryption — makes it secret</div>
+        <ul>
+          <li>XChaCha20-Poly1305 over your message</li>
+          <li>Key from Argon2id over the shared code</li>
+          <li>Without the code it is unreadable, full stop</li>
+          <li>Tampering is detected, not silently accepted</li>
+        </ul>
+      </div>
+      <div class="half open">
+        <div class="cap">□ concealment — makes it look ordinary</div>
+        <ul>
+          <li>Invisible Unicode carrying the ciphertext</li>
+          <li>Buys deniability against a casual reader</li>
+          <li>Provides <strong>zero</strong> secrecy on its own</li>
+          <li>Anyone <em>looking</em> for it will find it</li>
+        </ul>
+      </div>
+    </div>
+    <p>
+      Encode something without encrypting it and anyone who notices the hidden characters reads it
+      with no key at all. That is why this page has no "hide my text" button — the capability is
+      absent rather than warned about.
+    </p>
+  </section>
+
+  <section class="card">
+    <h2>Carrier styles</h2>
+    <p class="hint">Measured against the real catalog. They are not interchangeable.</p>
+    <table>
+      <thead><tr><th>Style</th><th>Cover text</th><th>They see</th><th>Size</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><b>invisible</b><br><span style="color:var(--ink-3);font-size:12px">Unicode tags · default</span></td>
+          <td class="yes">supported</td>
+          <td>only your cover message</td>
+          <td>1× payload</td>
+        </tr>
+        <tr>
+          <td><b>zerowidth</b><br><span style="color:var(--ink-3);font-size:12px">fallback</span></td>
+          <td class="yes">supported</td>
+          <td>only your cover message</td>
+          <td>4× payload</td>
+        </tr>
+        <tr>
+          <td><b>emoji</b></td>
+          <td class="no">not supported</td>
+          <td>a wall of emoji</td>
+          <td>1× payload</td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="color:var(--ink-2);font-size:13px">
+      The emoji decoder consumes every emoji it is given, so a cover message containing one
+      corrupts the payload. It is standalone or nothing.
+    </p>
+  </section>
+</div>
+
+<!-- ══════════════════════════ CHECK ══════════════════════════ -->
+<div class="panel" id="p-check" role="tabpanel" aria-labelledby="t-check" hidden>
+  <section class="card">
+    <h2>Is something hidden in this?</h2>
+    <p class="hint">
+      Paste any message. This finds invisible characters, extracts a sealed note if one is present,
+      and tells you what you're holding. Runs entirely in this page — nothing is sent anywhere, and
+      no code is asked for because nothing here decrypts.
+    </p>
+    <label class="sr" for="inp">Message to check</label>
+    <textarea id="inp" spellcheck="false" placeholder="Paste a message here — include everything, invisible characters and all"></textarea>
+    <div class="row">
+      <button class="go" id="btn">Check it</button>
+      <button class="ghost" id="clr">Clear</button>
+      <button class="ghost" id="demo">Load an example</button>
+    </div>
+    <div id="out"></div>
+  </section>
+</div>
+
+<!-- ══════════════════════════ USE ══════════════════════════ -->
+<div class="panel" id="p-use" role="tabpanel" aria-labelledby="t-use" hidden>
+  <section class="card">
+    <h2>At a terminal</h2>
+    <p class="hint">
+      The code is typed at the terminal and the message prints there. Nothing passes through an
+      agent or a conversation transcript.
+    </p>
+    <h3>Hide a message</h3>
+    <pre><span class="c"># write the secret to a file first, so it stays out of shell history</span>
+$ <span class="p">parseltongue-capsule conceal</span> --in secret.txt \
+    --cover <span style="color:var(--green)">"running late, see you there"</span> \
+    --out message.txt</pre>
+    <p style="font-size:13px;color:var(--ink-2)">
+      Prints the artifact and a generated code of about 67 bits, like
+      <code>gray-dock-perch-8937-garlic-poem-cobra</code>. Words, not base64 — it has to survive
+      being read down a phone line.
+    </p>
+    <h3>Read one</h3>
+    <pre>$ <span class="p">parseltongue-capsule reveal</span> --in message.txt
+Decrypt code: <span class="c">****************</span>
+<span class="c">--- hidden message ---</span>
+east gate, 0400
+<span class="c">--- end ---</span></pre>
+    <h3>See the options</h3>
+    <pre>$ <span class="p">parseltongue-capsule styles</span>      <span class="c"># carriers and what each looks like</span>
+$ <span class="p">parseltongue-capsule help</span>        <span class="c"># everything else</span></pre>
+  </section>
+
+  <section class="card">
+    <h2>From an AI assistant</h2>
+    <p class="hint">
+      The same operations as MCP tools, for when you are already working in a conversation.
+    </p>
+    <pre><span class="p">conceal_options</span>  <span class="c">{ secret_length, with_cover_text }</span>
+    <span class="c">→ the carrier styles, with sizes and what each reveals</span>
+
+<span class="p">conceal_message</span>  <span class="c">{ secret, cover_text, style?, code? }</span>
+    <span class="c">→ the one artifact to send, plus the code</span>
+
+<span class="p">reveal_message</span>   <span class="c">{ artifact, code }</span>
+    <span class="c">→ the hidden message</span></pre>
+    <div class="callout">
+      <div class="h">▲ the trade-off, stated plainly</div>
+      <p>
+        Anything passing through a conversation is retained in that conversation's transcript —
+        the artifact, the code, and the revealed message. That is a copy you did not explicitly
+        choose to make.
+      </p>
+      <p>
+        It is still the right default, because a tool that hands back a file path instead of your
+        message is useless for reading it. But for anything that genuinely matters, use the
+        terminal.
+      </p>
+    </div>
+  </section>
+</div>
+
+<!-- ══════════════════════════ LIMITS ══════════════════════════ -->
+<div class="panel" id="p-limits" role="tabpanel" aria-labelledby="t-limits" hidden>
+  <section class="card">
+    <h2>The mistake that undoes everything</h2>
+    <div class="callout">
+      <div class="h">▲ send the code a different way</div>
+      <p>
+        If the code travels in the same channel as the message, there is no protection whatsoever.
+        Whoever reads that channel reads both, and the encryption was pointless.
+      </p>
+      <p>
+        This is the realistic failure, not an exotic one. Codes are word-based precisely so you can
+        say one out loud instead of giving up and pasting it under the message.
+      </p>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>What it does not defend against</h2>
+    <table>
+      <thead><tr><th>Threat</th><th>Why not</th></tr></thead>
+      <tbody>
+        <tr><td><b>A compromised device</b></td><td>If the machine writing or reading the message is owned, so is the message. Encryption cannot fix a keylogger.</td></tr>
+        <tr><td><b>Someone looking for steganography</b></td><td>Invisible characters are trivially detectable — the Check tab finds them instantly. Concealment defeats a skim, not an analyst.</td></tr>
+        <tr><td><b>A weak or reused code</b></td><td>Anyone holding the artifact can try codes offline with no rate limit. Argon2id makes each attempt expensive; it cannot rescue a guessable code. Reuse means one break reads everything.</td></tr>
+        <tr><td><b>Replay</b></td><td>A message reopens every time. There is no freshness check, so a captured artifact can be delivered again later. Put a date inside the message if that matters.</td></tr>
+        <tr><td><b>Knowing who sent it</b></td><td>A shared code proves the sender knew the code — nothing more. Anyone else who knows it could have written the message.</td></tr>
+        <tr><td><b>Platforms that strip invisible characters</b></td><td>Some do, silently. The recipient gets your cover message with nothing inside. Send it as a file if a channel keeps eating it.</td></tr>
+        <tr><td><b>What you do next</b></td><td>Pasting the revealed message elsewhere makes a copy none of this protects.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="card">
+    <h2>There is no recovery</h2>
+    <p>
+      Lose the code and the message is gone. No reset, no escrow, nobody to ask — a recovery path
+      is a backdoor with better branding. For the identity-based mode there is a backup command,
+      and using it is not optional.
+    </p>
+    <h3>Honest status</h3>
+    <p style="color:var(--ink-2);font-size:13.5px">
+      This has had a careful self-review, not an external audit. Established primitives are used
+      throughout and nothing was hand-rolled, but one person wrote the code and one person
+      reviewed it — and that review did find a real flaw in the first attempt. Weigh it
+      accordingly.
+    </p>
+  </section>
+</div>
+
+<footer>
+  Parseltongue · offline, no telemetry, no network calls ·
+  capsule crypto Apache-2.0, everything else AGPL-3.0 ·
+  built on <a href="https://github.com/elder-plinius/P4RS3LT0NGV3">P4RS3LT0NGV3</a><br>
+  <a href="wizard.html">capsule inspector →</a> for the identity-based mode (verifies signatures)
+</footer>
+
+</div>
+
+<script>
+'use strict';
+
+/* ── tabs ─────────────────────────────────────────────── */
+const TABS = [['t-how','p-how'],['t-check','p-check'],['t-use','p-use'],['t-limits','p-limits']];
+for (const [tab, panel] of TABS) {
+  document.getElementById(tab).addEventListener('click', () => {
+    for (const [t, p] of TABS) {
+      const on = t === tab;
+      document.getElementById(t).setAttribute('aria-selected', String(on));
+      document.getElementById(p).hidden = !on;
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+}
+
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+/* ── invisible-character classes ──────────────────────
+   Mirrors the ranges the Node implementation reports on. Kept as plain data so this page needs no
+   dependency of any kind. */
+const HIDDEN = [
+  ['zero-width', 0x200b, 0x200f, 'zero-width spaces and joiners'],
+  ['bidi-control', 0x202a, 0x202e, 'can visually reorder text'],
+  ['bidi-isolate', 0x2066, 0x2069, 'can visually reorder text'],
+  ['word-joiner', 0x2060, 0x2064, 'invisible joiners and operators'],
+  ['variation-selector', 0xfe00, 0xfe0f, 'a common carrier'],
+  ['variation-supplement', 0xe0100, 0xe01ef, 'high-capacity carrier'],
+  ['unicode-tag', 0xe0000, 0xe007f, 'carries hidden ASCII — the default style'],
+  ['bom', 0xfeff, 0xfeff, 'zero-width no-break space'],
+];
+
+function classOf(cp) {
+  for (const [name, lo, hi, why] of HIDDEN) if (cp >= lo && cp <= hi) return { name, why };
+  return null;
+}
+
+function visibleOf(text) {
+  return [...text].filter((ch) => !classOf(ch.codePointAt(0))).join('');
+}
+
+/* Unicode tag characters map to ASCII by subtracting the tag block offset — the inverse of how
+   the `invisible` style encodes.
+
+   The tag block only covers printable ASCII (0x20–0x7E), so NEWLINES DO NOT SURVIVE: a 423-char
+   envelope comes back as 415 characters with its eight line breaks gone. That is expected, not a
+   bug to fix — the envelope parser recovers the body by collecting base64url characters and is
+   indifferent to how the text is wrapped, so the extracted envelope still decrypts correctly.
+   Verified against a real artifact. Do not "repair" this by inventing line breaks. */
+function decodeTags(text) {
+  let out = '';
+  for (const ch of text) {
+    const cp = ch.codePointAt(0);
+    if (cp >= 0xe0020 && cp <= 0xe007e) out += String.fromCharCode(cp - 0xe0000);
+  }
+  return out;
+}
+
+function analyse(raw) {
+  const chars = [...raw];
+  const counts = new Map();
+  for (const ch of chars) {
+    const k = classOf(ch.codePointAt(0));
+    if (k) counts.set(k.name, (counts.get(k.name) || 0) + 1);
+  }
+  const visible = visibleOf(raw);
+  const hiddenTotal = chars.length - [...visible].length;
+  const extracted = decodeTags(raw);
+  const isSealedNote = /PARSELTONGUE SEALED NOTE/.test(extracted);
+  const isCapsule = /PARSELTONGUE CAPSULE/.test(extracted);
+
+  return {
+    total: chars.length,
+    visible,
+    visibleCount: [...visible].length,
+    hiddenTotal,
+    kinds: [...counts.entries()].map(([name, n]) => {
+      const meta = HIDDEN.find((h) => h[0] === name);
+      return { name, n, why: meta ? meta[3] : '' };
+    }),
+    extracted,
+    isSealedNote,
+    isCapsule,
+    plainSealedNote: /PARSELTONGUE SEALED NOTE/.test(raw),
+  };
+}
+
+function render() {
+  const raw = document.getElementById('inp').value;
+  const box = document.getElementById('out');
+
+  if (!raw.trim()) {
+    box.innerHTML = '<div class="verdict none"><div class="h">nothing to check</div>' +
+      'Paste a message above.</div>';
+    return;
+  }
+
+  const a = analyse(raw);
+  let html = '';
+
+  if (a.isSealedNote || a.isCapsule) {
+    const kind = a.isSealedNote ? 'sealed note' : 'capsule';
+    html += '<div class="verdict found"><div class="h">● hidden ' + kind + ' found</div>' +
+      'There is an encrypted ' + kind + ' concealed in this message. It is extracted below — ' +
+      'this page cannot decrypt it, so take it to <code>parseltongue-capsule reveal</code> or the ' +
+      '<code>reveal_message</code> tool with the code.</div>';
+  } else if (a.plainSealedNote) {
+    html += '<div class="verdict found"><div class="h">● sealed note, not concealed</div>' +
+      'This is an encrypted sealed note sitting in plain view — no cover message. It is secret, ' +
+      'but it obviously <em>is</em> something. Decrypt it with the code.</div>';
+  } else if (a.hiddenTotal > 0) {
+    html += '<div class="verdict warn"><div class="h">▲ invisible characters, no readable payload</div>' +
+      a.hiddenTotal + ' invisible character(s) are present, but nothing this page recognises came ' +
+      'out of them. Either a different carrier style was used, or the concealment was partly ' +
+      'stripped in transit — some platforms silently remove these.</div>';
+  } else {
+    html += '<div class="verdict none"><div class="h">○ nothing hidden here</div>' +
+      'No invisible characters at all. That means nothing is concealed, <em>or</em> whatever ' +
+      'carried this message removed them. An emoji-style carrier would not show up here either — ' +
+      'it is made of visible emoji.</div>';
+  }
+
+  const vpct = a.total ? (a.visibleCount / a.total) * 100 : 100;
+  html += '<div class="bar" aria-hidden="true">' +
+    '<i class="vis" style="width:' + vpct.toFixed(1) + '%"></i>' +
+    '<i class="hid" style="width:' + (100 - vpct).toFixed(1) + '%"></i></div>' +
+    '<div class="barkey"><b><span class="sw" style="background:var(--amber)"></span>' +
+    a.visibleCount + ' visible</b> &nbsp; <b><span class="sw" style="background:var(--teal)"></span>' +
+    a.hiddenTotal + ' hidden</b></div>';
+
+  html += '<dl class="kv"><dt>they see</dt><dd>' +
+    (a.visibleCount ? esc(a.visible) : '<span style="color:var(--ink-3)">(nothing — renders blank)</span>') +
+    '</dd><dt>total chars</dt><dd>' + a.total + '</dd>';
+  if (a.kinds.length) {
+    html += '<dt>carriers</dt><dd>' +
+      a.kinds.map((k) => esc(k.name) + (k.why ? ' <span style="color:var(--ink-3)">— ' + esc(k.why) + '</span>' : '')).join('<br>') +
+      '</dd>';
+  }
+  html += '</dl>';
+
+  if (a.isSealedNote || a.isCapsule) {
+    html += '<h3>Extracted payload</h3><pre>' + esc(a.extracted.slice(0, 1200)) +
+      (a.extracted.length > 1200 ? '\n<span class="c">… ' + (a.extracted.length - 1200) + ' more characters</span>' : '') +
+      '</pre><p style="font-size:13px;color:var(--ink-2)">Still encrypted. The code is the only ' +
+      'thing that opens it, and this page never asks for one.</p>';
+  }
+
+  box.innerHTML = html;
+}
+
+document.getElementById('btn').addEventListener('click', render);
+document.getElementById('clr').addEventListener('click', () => {
+  document.getElementById('inp').value = '';
+  document.getElementById('out').innerHTML = '';
+});
+
+/* An example built in-page: tag-encode a short stand-in so the Check tab demonstrates itself
+   without shipping a real sealed note. */
+document.getElementById('demo').addEventListener('click', () => {
+  const stand = '----- PARSELTONGUE SEALED NOTE v1 -----\nid: 2b4ce9f10a7d8c33\n\n(example payload, not a real note)\n----- END PARSELTONGUE SEALED NOTE -----';
+  let tagged = '';
+  for (const ch of stand) {
+    const c = ch.charCodeAt(0);
+    tagged += (c >= 0x20 && c <= 0x7e) ? String.fromCodePoint(0xe0000 + c) : '';
+  }
+  document.getElementById('inp').value = 'Hey! Running late, see you at the thing 🙂' + tagged;
+  render();
+});
+</script>
+</body>
+</html>

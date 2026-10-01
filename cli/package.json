@@ -9,7 +9,8 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@reconlion/capsule-core": "0.1.0"
+    "@reconlion/capsule-core": "0.1.0",
+    "@reconlion/parseltongue-bridge": "0.1.0"
   },
   "bin": {
     "parseltongue-capsule": "src/index.js"
