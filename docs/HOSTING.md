@@ -73,11 +73,15 @@ it; nothing new to provision, no Worker, no bindings, no secrets.
 
 Serving this page triggers section 13: remote users interacting with a modified AGPL work must be
 offered the corresponding source. In practice that is a visible "Source" link to a public
-repository containing this exact version. The footer already carries the license line and the
-upstream credit — add the source link when the repository goes public.
+repository containing this exact version.
 
-Note the ordering this implies: **the page should not be hosted before the repository is public**,
-or the §13 obligation is live with nothing to point at. That is the one real sequencing constraint.
+**Satisfied as of 2026-10-01.** The repository is public at
+`https://github.com/0xreconlion/parseltongue-mcp`, and both pages carry a Source link in the
+footer. The sequencing constraint — never host before the repo is public, or the obligation is
+live with nothing to point at — is met, so the page is clear to deploy.
+
+One ongoing duty: the link must point at a repo containing *the version being served*. If the page
+is updated, push the source too.
 
 ## If a remote MCP server is ever genuinely wanted
 

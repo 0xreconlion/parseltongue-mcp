@@ -208,10 +208,60 @@ function estimateCodeEntropyBits(code) {
   return effectiveLength * Math.log2(alphabet);
 }
 
-/** Throw unless the code clears both gates, naming the reason. */
-function assertCodeStrength(code) {
+/**
+ * Is this code derived from the message it is protecting?
+ *
+ * FOUND IN A NAIVE-USER RUN: a message reading "meet me at the north gate at 9pm" was accepted
+ * with the code `northgate9pm`. Sixty-two bits by the character-class model, and worthless —
+ * anyone who intercepts both the artifact and the cover text can guess it in a handful of tries,
+ * and the cover text travels *with* the artifact by design.
+ *
+ * This is the shape people naturally reach for, because a code tied to the message is easier to
+ * remember. It is also the one kind of weak code the generic gates cannot see, since it depends
+ * on context they are not given. Checked by token overlap: any word of four or more characters
+ * shared between the code and the protected content is disqualifying.
+ */
+function derivedFromContent(code, ...content) {
+  const normalise = (text) =>
+    String(text || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .split(' ')
+      .filter((w) => w.length >= 4);
+
+  // Also split a run-together code like "northgate9pm" against the content's words, since the
+  // user removed the separators that token comparison would otherwise rely on.
+  const bare = String(code).toLowerCase().replace(/[^a-z0-9]+/g, '');
+  const codeTokens = new Set(normalise(code));
+
+  for (const piece of content) {
+    for (const word of normalise(piece)) {
+      if (codeTokens.has(word)) return word;
+      if (bare.includes(word)) return word;
+    }
+  }
+  return null;
+}
+
+/**
+ * Throw unless the code clears every gate, naming the reason.
+ *
+ * `context` is the message and cover text when available, so a code lifted from the content can be
+ * refused. Optional: the gate degrades to the generic checks when context is not supplied.
+ */
+function assertCodeStrength(code, context = []) {
   if (typeof code !== 'string' || !code.trim()) {
     throw new SealedError('a decrypt code is required');
+  }
+
+  const borrowed = derivedFromContent(code, ...context);
+  if (borrowed) {
+    throw new SealedError(
+      `that code will not do: it reuses "${borrowed}" from the message or its cover text. The ` +
+        'cover text travels WITH the artifact, so anyone who intercepts it can guess a code built ' +
+        'from the same words in a few tries. Leave the code out and one will be generated for you ' +
+        `at about ${codeEntropyBits().toFixed(0)} bits.`
+    );
   }
 
   // Guessability first: a dictionary hit is unaffected by how long the string is.
@@ -258,7 +308,7 @@ function sealedHeader(note) {
  * transmit it, so it is returned rather than hidden. Whoever calls this is responsible for
  * getting it to the recipient by a *different* route than the note.
  */
-function sealNote({ payload, code = null, kdf = DEFAULT_KDF }) {
+function sealNote({ payload, code = null, kdf = DEFAULT_KDF, context = [] }) {
   const payloadBytes = toBytes(payload == null ? '' : payload);
   if (payloadBytes.length === 0) throw new SealedError('refusing to seal an empty message');
   if (payloadBytes.length > MAX_PAYLOAD_BYTES) {
@@ -267,7 +317,11 @@ function sealNote({ payload, code = null, kdf = DEFAULT_KDF }) {
 
   const generated = code === null || code === undefined;
   const resolvedCode = generated ? generateCode() : String(code);
-  const entropyBits = generated ? codeEntropyBits() : assertCodeStrength(resolvedCode);
+  // The payload itself is always part of the context: a code lifted from the message is
+  // guessable by anyone who later obtains the message.
+  const entropyBits = generated
+    ? codeEntropyBits()
+    : assertCodeStrength(resolvedCode, [payload, ...context]);
 
   const salt = new Uint8Array(randomBytes(SALT_BYTES));
   const nonce = new Uint8Array(randomBytes(NONCE_BYTES));
@@ -530,6 +584,7 @@ function assertShape(note) {
 module.exports = {
   DEFAULT_KDF,
   guessableReason,
+  derivedFromContent,
   MAX_PAYLOAD_BYTES,
   MIN_CODE_ENTROPY_BITS,
   SEALED_FOOTER,

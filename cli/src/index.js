@@ -425,6 +425,18 @@ async function cmdConceal(args) {
   const secret = args.message !== undefined ? String(args.message) : readInput(args.in || args._[0]);
   if (!secret.trim()) throw new Error('refusing to conceal an empty message');
 
+  // Without cover text an invisible artifact renders as a completely blank message, which draws
+  // exactly the attention it is meant to avoid. Same rule as the MCP path.
+  if (style !== 'emoji' && !coverText && !args['allow-blank']) {
+    throw new Error(
+      `--cover is required for the ${style} style. Without it the artifact renders as a blank\n` +
+        'message. Give it something ordinary you would plausibly send:\n' +
+        `  ${PROGRAM} conceal --in secret.txt --cover "running late, see you there"\n` +
+        'Pass --allow-blank if a blank message really is what you want, or --style emoji for a\n' +
+        'carrier that is visible on purpose.'
+    );
+  }
+
   if (args.message !== undefined) {
     err('note: --message is recorded in your shell history. Use --in <file> or pipe on stdin.');
   }
@@ -435,7 +447,7 @@ async function cmdConceal(args) {
     code = await prompt.passphrase('Decrypt code to use');
   }
 
-  const sealed = core.sealNote({ payload: secret, code });
+  const sealed = core.sealNote({ payload: secret, code, context: [coverText] });
   const concealed = bridge.conceal({
     payload: sealed.envelope,
     style,
@@ -461,8 +473,23 @@ async function cmdConceal(args) {
   err(`Artifact size  : ${concealed.sizes.artifactChars} chars (${concealed.sizes.visibleChars} visible)`);
   err(`Carrier style  : ${concealed.style}`);
   err('');
+  err('!! COPY THE WHOLE ARTIFACT. Most of it is invisible characters, so selecting only the');
+  err('   text you can see gets you nothing. Send the file, or select all of it.');
+  err('');
   err(`!! ${sealed.warning}`);
   for (const w of concealed.warnings) { err(''); err(`!! ${w}`); }
+  err('');
+  err('─────────────────────────────────────────────');
+  err('FORWARD THIS TO THEM (it gives nothing away):');
+  err('');
+  err('  You are getting a message from me with a second, hidden message inside it. To read it');
+  err('  you need the message and a code I am sending separately.');
+  err('');
+  err(`    ${PROGRAM} reveal --in message.txt`);
+  err('');
+  err('  Paste the whole message into message.txt first - including the parts you cannot see.');
+  err('  Setup: https://github.com/0xreconlion/parseltongue-mcp');
+  err('─────────────────────────────────────────────');
   if (concealed.sizes.artifactChars > 2000) {
     err('');
     err(`!! ${concealed.sizes.artifactChars} characters exceeds some chat limits (Discord cuts at 2000).`);
@@ -557,7 +584,7 @@ function cmdHelp() {
   out('');
   out('Hidden messages (shared code - no identity needed)');
   out('  styles                             carrier styles and what each looks like');
-  out('  conceal [--in <file>] [--cover "visible text"] [--style invisible|zerowidth|emoji]');
+  out('  conceal --cover "visible text" [--in <file>] [--style invisible|zerowidth|emoji]');
   out('                                     hide a message; prints the artifact and the code');
   out('  reveal [--in <file>]               read a hidden message (asks for the code)');
   out('');

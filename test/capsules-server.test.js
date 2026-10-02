@@ -506,9 +506,69 @@ describe('capsules server over stdio', () => {
     });
 
     it('refuses a weak user-supplied code with the reason', async () => {
-      const result = await client.callTool('conceal_message', { secret: 'x', code: 'password123' });
+      const result = await client.callTool('conceal_message', {
+        secret: 'x', cover_text: 'hi', code: 'password123',
+      });
       assert.equal(result.isError, true);
       assert.match(result.content[0].text, /will not do|too weak/);
+    });
+
+    it('refuses a code borrowed from the message or its cover', async () => {
+      // Found in a naive-user run: "meet me at the north gate at 9pm" was accepted with the code
+      // `northgate9pm`. The cover text travels WITH the artifact, so a code built from the same
+      // words is guessable by whoever intercepts it.
+      const result = await client.callTool('conceal_message', {
+        secret: 'meet me at the north gate at 9pm',
+        cover_text: 'you still good for tomorrow?',
+        code: 'northgate-tomorrow-9pm',
+      });
+      assert.equal(result.isError, true);
+      assert.match(result.content[0].text, /reuses "(north|gate|tomorrow)"/);
+      assert.match(result.content[0].text, /travels WITH the artifact/);
+    });
+
+    it('requires cover text rather than silently producing a blank message', async () => {
+      // A newcomer's first call omits cover_text. The artifact then renders as nothing at all,
+      // which is conspicuous in its own way - an empty message invites a second look.
+      const blank = await client.callTool('conceal_message', { secret: 'something' });
+      assert.equal(blank.isError, true);
+      assert.match(blank.content[0].text, /cover_text is required/);
+      assert.match(blank.content[0].text, /completely blank message/);
+
+      // But it stays possible for anyone who genuinely wants it.
+      const allowed = await client.callTool('conceal_message', {
+        secret: 'something', allow_blank: true,
+      });
+      assert.ok(!allowed.isError, 'allow_blank should permit it');
+      assert.equal(allowed.structuredContent.visible_preview, '');
+    });
+
+    it('hands the sender instructions they can forward to a newcomer', async () => {
+      // Found in a naive-user run: the sender was told to use reveal_message but never told the
+      // recipient needs anything installed. Someone receiving this cold had no path forward.
+      const result = await client.callTool('conceal_message', {
+        secret: 'east gate 0400', cover_text: 'running late',
+      });
+      const instructions = result.structuredContent.recipient_instructions;
+      assert.ok(instructions, 'no recipient instructions provided');
+      assert.match(instructions, /hidden message/i);
+      assert.match(instructions, /github\.com/, 'must tell a newcomer where to get the tool');
+      assert.match(instructions, /ENTIRE message/, 'must warn about copying only the visible part');
+      // And the instructions must give away neither the secret nor the code.
+      assert.ok(!instructions.includes('east gate 0400'));
+      assert.ok(!instructions.includes(result.structuredContent.code));
+      assert.match(result.content[0].text, /FORWARD THIS TO THEM/);
+    });
+
+    it('explains the hidden-message flow, not only capsules', async () => {
+      // The explain tool previously covered only the public-key half, so a newcomer asking how
+      // this works got the wrong answer entirely.
+      const result = await client.callTool('explain_capsule_security', { topic: 'hidden_messages' });
+      const text = result.content[0].text;
+      assert.match(text, /HIDDEN MESSAGES/);
+      assert.match(text, /conceal_message/);
+      assert.match(text, /COPY THE WHOLE THING/);
+      assert.match(text, /SEND THE CODE SEPARATELY/);
     });
 
     it('refuses emoji style with cover text', async () => {
