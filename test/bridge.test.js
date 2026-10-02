@@ -3,6 +3,11 @@
 const assert = require('node:assert/strict');
 const { describe, it } = require('node:test');
 
+const { upstreamRoot } = require('./helpers/upstream-root');
+
+// Must be set before the bridge is required - it resolves the checkout at load time.
+process.env.PARSELTONGUE_ROOT = upstreamRoot();
+
 const bridge = require('../packages/parseltongue-bridge/src');
 
 describe('catalog', () => {

@@ -18,6 +18,7 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { after, before, describe, it } = require('node:test');
 
+const { serverEnv } = require('./helpers/upstream-root');
 const core = require('../packages/capsule-core/src');
 
 const SERVER = path.join(__dirname, '..', 'servers', 'capsules', 'src', 'index.js');
@@ -69,7 +70,7 @@ class Client {
   constructor(env) {
     this.child = spawn(process.execPath, [SERVER], {
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env, ...env },
+      env: serverEnv(env),
     });
     this.nextId = 1;
     this.buffer = '';

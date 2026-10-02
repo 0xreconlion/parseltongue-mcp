@@ -140,13 +140,23 @@ to Node anyway; the bridge calls the Node transform loader directly.
 
 ## Setup
 
-The upstream Parseltongue checkout is **not** vendored here. Point the bridge at a local clone:
+The upstream Parseltongue checkout is **not** vendored here — it stays a separate clone so its
+AGPL history never mixes with this repo's. Point at it either way:
 
 ```bash
-export PARSELTONGUE_ROOT=/path/to/P4RS3LT0NGV3
-npm install
-npm test
+git clone https://github.com/elder-plinius/P4RS3LT0NGV3 vendor/P4RS3LT0NGV3
+npm install && npm test
 ```
+
+`vendor/` is gitignored, and a symlink works as well as a clone. Or set it explicitly, which is
+what the MCP registration does:
+
+```bash
+export PARSELTONGUE_ROOT=/absolute/path/to/P4RS3LT0NGV3
+```
+
+Without one of those, the bridge fails at startup with instructions rather than silently serving
+an empty catalog.
 
 ## Tests
 

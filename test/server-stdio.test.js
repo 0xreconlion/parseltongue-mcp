@@ -15,12 +15,14 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { after, before, describe, it } = require('node:test');
 
+const { serverEnv } = require('./helpers/upstream-root');
+
 const SERVER = path.join(__dirname, '..', 'servers', 'transforms', 'src', 'index.js');
 const PROTOCOL_VERSION = '2025-06-18';
 
 class Client {
   constructor() {
-    this.child = spawn(process.execPath, [SERVER], { stdio: ['pipe', 'pipe', 'pipe'] });
+    this.child = spawn(process.execPath, [SERVER], { stdio: ['pipe', 'pipe', 'pipe'], env: serverEnv() });
     this.nextId = 1;
     this.buffer = '';
     this.stderr = '';

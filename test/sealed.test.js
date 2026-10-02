@@ -5,6 +5,11 @@ const { describe, it } = require('node:test');
 
 const sealed = require('../packages/capsule-core/src/sealed');
 const { WORDLIST, DROPPED, differsByOneLetter } = require('../packages/capsule-core/src/wordlist');
+const { upstreamRoot } = require('./helpers/upstream-root');
+
+// Must be set before the bridge is required - it resolves the checkout at load time.
+process.env.PARSELTONGUE_ROOT = upstreamRoot();
+
 const bridge = require('../packages/parseltongue-bridge/src');
 
 const SECRET = 'the drop is at 0400, east gate';

@@ -31,9 +31,19 @@ const TRANSFORMS_RELATIVE = path.join('src', 'transformers');
 // Non-transform files living in the transformers tree.
 const SKIP_FILES = new Set(['BaseTransformer.js', 'index.js', 'loader-node.js', 'README.md']);
 
+/**
+ * Conventional places to look when PARSELTONGUE_ROOT is unset, relative to this repository.
+ *
+ * These were absolute paths inside one developer's home directory until this repo was prepared
+ * for publication. That was wrong twice over: it leaked a username and directory layout, and the
+ * fallback was meaningless on any other machine — it would simply never match, so the error
+ * message was doing all the work anyway. Relative conventional locations actually help someone
+ * who cloned both repositories side by side.
+ */
 const CANDIDATE_ROOTS = [
-  '/home/nsp/Desktop/Security-Repo-Audit-Toolkit/repos/P4RS3LT0NGV3',
-  '/home/nsp/p4rs3lt0ngv3-research',
+  path.resolve(__dirname, '..', '..', '..', 'vendor', 'P4RS3LT0NGV3'),
+  path.resolve(__dirname, '..', '..', '..', '..', 'P4RS3LT0NGV3'),
+  path.resolve(__dirname, '..', '..', '..', '..', 'p4rs3lt0ngv3'),
 ];
 
 class ParseltongueRootError extends Error {}

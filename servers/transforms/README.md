@@ -49,8 +49,8 @@ Then in `~/.claude.json` under `mcpServers`:
 ```json
 "parseltongue-transforms": {
   "command": "node",
-  "args": ["/home/nsp/repos/parseltongue-mcp/servers/transforms/src/index.js"],
-  "env": { "PARSELTONGUE_ROOT": "/home/nsp/Desktop/Security-Repo-Audit-Toolkit/repos/P4RS3LT0NGV3" }
+  "args": ["/absolute/path/to/parseltongue-mcp/servers/transforms/src/index.js"],
+  "env": { "PARSELTONGUE_ROOT": "/absolute/path/to/P4RS3LT0NGV3" }
 }
 ```
 
